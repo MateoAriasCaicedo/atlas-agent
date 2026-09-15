@@ -1,8 +1,8 @@
 import os
 import re
-import rich
 import requests
 import trafilatura
+import logging
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from tavily import TavilyClient
@@ -14,16 +14,46 @@ load_dotenv()
 tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 
-@tool
-def web_search(query: str) -> str:
-    results = tavily.search(query=query, max_results=5)
-    output = []
-    rich.print(results)
+logger = logging.getLogger(__name__)
 
-    for result in results["results"]:
-        output.append(
-            f"Title: {result["title"]}\nUrl: {result[   "url"]}\nSnippet: {result["content"][:300]}\n"
-        )
+
+@tool
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web and return a list of relevant results.
+
+    Use this when you need up-to-date information, facts not in your
+    training data, or sources to cite. Do not use it for purely
+    computational or reasoning tasks.
+
+    Args:
+        query: The search query. Short, specific phrases (2-6 words)
+            work better than full sentences.
+        max_results: Maximum number of results to return (default 5).
+
+    Returns:
+        A string with one block per result, each containing the
+        title, URL, and a snippet of the page content, separated by
+        '---'. Returns a message stating no results were found if the
+        search returns nothing, or a message describing the failure
+        if the search itself errors out.
+    """
+    try:
+        results = tavily.search(query=query, max_results=max_results)
+    except Exception as exception:
+        logger.exception("web_search failed for query=%r", query)
+        return f"Search failed: {exception}"
+
+    hits = results.get("results", [])
+    if not hits:
+        return f"No results found for query: {query!r}"
+
+    output = []
+    for result in hits:
+        title = result.get("title", "Untitled")
+        url = result.get("url", "")
+        content = result.get("content", "")
+        snippet = content[:300] + ("..." if len(content) > 300 else "")
+        output.append(f"Title: {title}\nUrl: {url}\nSnippet: {snippet}\n")
 
     return "\n---\n".join(output)
 
